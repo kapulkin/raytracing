@@ -17,19 +17,27 @@ class RayTracingPanel(val scene: Scene, val useLight: Boolean, val refractionTim
 
         for (x in 0..width) {
             for (y in 0..height) {
-                val step = scene.camera.projectionPlaneHeight / height
-                val position = scene.camera.position +
-                        scene.camera.dir * scene.camera.near +
-                        scene.camera.up * step * (height / 2.0 - y) +
-                        scene.camera.right * step * (x - width / 2.0)
+                var pixelColor = Vector(0.0)
+                val subpixelsCount = 3
+                for (i in 0 until subpixelsCount) {
+                    for (j in 0 until subpixelsCount) {
+                        val step = scene.camera.projectionPlaneHeight / height
+                        val position = scene.camera.position +
+                                scene.camera.dir * scene.camera.near +
+                                scene.camera.up * (step * (height / 2.0 - y) + step / subpixelsCount * (i - (subpixelsCount - 1) / 2.0)) +
+                                scene.camera.right * (step * (x - width / 2.0)  + step / subpixelsCount * (j - (subpixelsCount - 1) / 2.0))
 
-                val ray = Ray(
-                    position,
-                    position - scene.camera.position
-                )
-                var color = scene.rayTrace(ray, useLight, 1 + refractionTimes.toInt())
-                color = Vector(min(color.x, 1.0), min(color.y, 1.0), min(color.z, 1.0))
-                g.color = color.toColor()
+                        val ray = Ray(
+                            position,
+                            position - scene.camera.position
+                        )
+                        var color = scene.rayTrace(ray, useLight, 1 + refractionTimes.toInt())
+                        pixelColor += color
+                    }
+                }
+                pixelColor /= (subpixelsCount * subpixelsCount).toDouble()
+                pixelColor = Vector(min(pixelColor.x, 1.0), min(pixelColor.y, 1.0), min(pixelColor.z, 1.0))
+                g.color = pixelColor.toColor()
 
 //                g.color = Color((255 * x) / width, (255 * y) / height, 0)
                 g.drawLine(x, y, x, y)

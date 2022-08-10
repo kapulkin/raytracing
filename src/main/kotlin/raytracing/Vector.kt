@@ -17,6 +17,10 @@ class Vector(val x: Double, val y: Double, val z: Double) {
         return this / length()
     }
 
+    fun isZero(): Boolean {
+        return x == 0.0 && y == 0.0 && z == 0.0
+    }
+
     operator fun unaryMinus(): Vector {
         return Vector(-x, -y, -z)
     }

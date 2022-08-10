@@ -2,10 +2,12 @@ package raytracing
 
 import raytracing.Geometry.GeometryObject
 import raytracing.Geometry.PhysicalColor
+import raytracing.lightning.AmbientLight
 import raytracing.lightning.Light
 import raytracing.lightning.toColor
 import raytracing.lightning.toVector
 import java.awt.Color
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -25,18 +27,48 @@ class Scene(val camera: Camera, val lights: Array<Light>, val geometryObjects: A
         return Pair(minT, nearestGeomObject)
     }
 
-    fun colorFromLights(
+    private fun colorFromLight(
+        light: Light,
+        objPoint: Vector,
+        ): Vector {
+        if (light is AmbientLight) {
+            return light.evaluateLightingAt(objPoint, this)
+        }
+        val directionToLight = light.directionAt(objPoint)
+        val ray = Ray(objPoint + directionToLight * 0.00001, directionToLight)
+        var (minT, beforeLightGeomObject: GeometryObject?) = intersect(ray)
+        if (minT > 0) {
+            val beforeLightObjPoint = ray.from + ray.dir * minT
+            val beforeLightObjColor = beforeLightGeomObject!!.getColorAtPoint(beforeLightObjPoint)
+            if (beforeLightObjColor != null && !beforeLightObjColor.transparent.isZero()) {
+                return (Vector(1.0) - beforeLightObjColor.transparent) * beforeLightObjColor.color + beforeLightObjColor.transparent * colorFromLight(light, beforeLightObjPoint)
+            } else {
+                return Vector(0.0)
+            }
+        }
+        return light.evaluateLightingAt(objPoint, this)
+    }
+
+    private fun colorFromLights(
         objPoint: Vector,
         objColor: PhysicalColor,
         nearestGeomObject: GeometryObject
     ): Vector {
         var lightedColor = Vector(0.0)
         for (light in lights) {
-            val lightColor = light.evaluateLightingAt(objPoint, this)
-            val diffuse = lightColor * objColor.color
+            val lightColor = colorFromLight(light, objPoint)
+            val diffuse =
+                if (light is AmbientLight) {
+                    lightColor * objColor.color
+                } else {
+                    val normal = nearestGeomObject.getNormalAtPoint(objPoint)!!.normalized()
+                    val lightDir = light.directionAt(objPoint).normalized()
+                    val cos = lightDir.dot(normal)
+                    lightColor * objColor.color * max(cos, 0.0)
+                }
             lightedColor += diffuse
         }
-        lightedColor = Vector(min(lightedColor.x, 1.0), min(lightedColor.y, 1.0), min(lightedColor.z, 1.0))
+//        lightedColor = Vector(min(lightedColor.x, 1.0), min(lightedColor.y, 1.0), min(lightedColor.z, 1.0))
         return lightedColor
     }
 
@@ -47,13 +79,16 @@ class Scene(val camera: Camera, val lights: Array<Light>, val geometryObjects: A
     ): Vector {
         var lightedColor = Vector(0.0)
         for (light in lights) {
-            val lightColor = light.evaluateLightingAt(objPoint, this)
+            if (light is AmbientLight) {
+                continue
+            }
+            val lightColor = colorFromLight(light, objPoint)
 
             val normal = nearestGeomObject.getNormalAtPoint(objPoint)!!.normalized()
-            val lightDir = light.directionAt(objPoint)
+            val lightDir = -light.directionAt(objPoint)
             val refLightDir = reflectDirection(lightDir, normal).normalized()
-            val dirToCam = (objPoint - camera.position).normalized()
-            val cos = dirToCam.dot(refLightDir)
+            val dirToCam = (camera.position - objPoint).normalized()
+            val cos = max(0.0, dirToCam.dot(refLightDir))
             val specular = lightColor * Vector(
                 cos.pow(2 / (1 - objColor.reflection.x)), cos.pow(2 / (1 - objColor.reflection.y)), cos.pow(2 / (1 - objColor.reflection.z))
             )
@@ -71,22 +106,21 @@ class Scene(val camera: Camera, val lights: Array<Light>, val geometryObjects: A
             val objPoint = ray.from + ray.dir * minT
             val objColor = nearestGeomObject!!.getColorAtPoint(objPoint)
             if (objColor != null) {
-                var color: Vector
-                if (useLight) {
+                val diffuseColor = if (useLight) {
                     var lightedColor = colorFromLights(objPoint, objColor, nearestGeomObject)
-                    color = lightedColor
+                    lightedColor
                 } else {
-                    color = objColor.color
+                    objColor.color
                 }
-                if (!(objColor.reflection.x == 0.0 && objColor.reflection.y == 0.0 && objColor.reflection.z == 0.0)) {
+                if (!(objColor.reflection.isZero())) {
                     val normal = nearestGeomObject.getNormalAtPoint(objPoint)!!.normalized()
                     val refDir = reflectDirection(ray.dir,  normal)
                     val refRay = Ray(objPoint + refDir * GeometryObject.epsilon, refDir)
                     val refColor = rayTrace(refRay, useLight, times - 1)
                     var lightedGlowColor = glowFromLights(objPoint, objColor, nearestGeomObject)
-                    return color * (Vector(1.0) - objColor.reflection) + (refColor + lightedGlowColor) * objColor.reflection
+                    return diffuseColor * (Vector(1.0) - objColor.reflection) + (refColor + lightedGlowColor) * objColor.reflection
                 } else {
-                    return color
+                    return diffuseColor
                 }
             } else {
                 return backgroundColor.toVector()
