@@ -112,7 +112,7 @@ class Scene(val camera: Camera, val lights: Array<Light>, val geometryObjects: A
                 } else {
                     objColor.color
                 }
-                if (!(objColor.reflection.isZero())) {
+                if (useLight && !(objColor.reflection.isZero())) {
                     val normal = nearestGeomObject.getNormalAtPoint(objPoint)!!.normalized()
                     val refDir = reflectDirection(ray.dir,  normal)
                     val refRay = Ray(objPoint + refDir * GeometryObject.epsilon, refDir)
